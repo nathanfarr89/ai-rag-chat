@@ -5,6 +5,8 @@ const SYSTEM_PROMPT = `You are a helpful assistant answering questions about a d
 Answer using only the provided context excerpts. If the answer isn't in the context, say you don't know based on the document — don't make things up.
 Keep answers concise.`;
 
+const PROXY_URL = (import.meta.env.VITE_PROXY_URL as string | undefined)?.trim();
+
 function buildUserContent(question: string, context: RetrievedChunk[]): string {
   const contextBlock = context
     .map((r, i) => `[Excerpt ${i + 1}]\n${r.chunk.text}`)
@@ -23,12 +25,27 @@ export async function streamAnswer(params: {
 }): Promise<void> {
   const { apiKey, model, history, question, context, onToken } = params;
 
-  const client = new Anthropic({ apiKey: apiKey.trim(), dangerouslyAllowBrowser: true });
-
   const messages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
     { role: "user", content: buildUserContent(question, context) },
   ];
+
+  const trimmedKey = apiKey.trim();
+  if (trimmedKey) {
+    await streamViaAnthropic({ apiKey: trimmedKey, model, messages, onToken });
+  } else {
+    await streamViaProxy({ messages, onToken });
+  }
+}
+
+async function streamViaAnthropic(params: {
+  apiKey: string;
+  model: ClaudeModel;
+  messages: Anthropic.MessageParam[];
+  onToken: (text: string) => void;
+}): Promise<void> {
+  const { apiKey, model, messages, onToken } = params;
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
   const stream = client.messages.stream({
     model,
@@ -52,5 +69,43 @@ export async function streamAnswer(params: {
       throw new Error(`Claude API error: ${err.message}`);
     }
     throw err;
+  }
+}
+
+async function streamViaProxy(params: {
+  messages: Anthropic.MessageParam[];
+  onToken: (text: string) => void;
+}): Promise<void> {
+  const { messages, onToken } = params;
+
+  if (!PROXY_URL) {
+    throw new Error(
+      "No API key set, and this deployment has no shared demo configured. Add your own Anthropic API key in Settings.",
+    );
+  }
+
+  const response = await fetch(`${PROXY_URL}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ system: SYSTEM_PROMPT, messages }),
+  });
+
+  if (!response.ok || !response.body) {
+    let message = `The shared demo failed (${response.status}).`;
+    try {
+      const data = (await response.json()) as { message?: string };
+      if (data.message) message = data.message;
+    } catch {
+      // response wasn't JSON — keep the generic message
+    }
+    throw new Error(message);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onToken(decoder.decode(value, { stream: true }));
   }
 }

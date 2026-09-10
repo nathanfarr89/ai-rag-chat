@@ -16,7 +16,7 @@ export function ChatWindow({ apiKey, model, chunks, documentName }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canChat = Boolean(apiKey) && Boolean(chunks?.length);
+  const canChat = Boolean(chunks?.length);
 
   async function handleSend() {
     const question = input.trim();
@@ -62,11 +62,7 @@ export function ChatWindow({ apiKey, model, chunks, documentName }: Props) {
     <div className="chat-window">
       <h2>Chat{documentName ? ` — ${documentName}` : ""}</h2>
 
-      {!canChat && (
-        <p className="settings-hint">
-          Add your API key and upload a document to start chatting.
-        </p>
-      )}
+      {!canChat && <p className="settings-hint">Upload a document to start chatting.</p>}
 
       <div className="message-list">
         {messages.map((m, i) => (
@@ -84,7 +80,7 @@ export function ChatWindow({ apiKey, model, chunks, documentName }: Props) {
           type="text"
           value={input}
           disabled={!canChat || pending}
-          placeholder={canChat ? "Ask a question about the document…" : "Set up your key and document first"}
+          placeholder={canChat ? "Ask a question about the document…" : "Upload a document first"}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void handleSend();

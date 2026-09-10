@@ -16,26 +16,28 @@ interface Props {
 
 export function SettingsPanel({ apiKey, model, onApiKeyChange, onModelChange }: Props) {
   const [showKey, setShowKey] = useState(false);
+  const hasOwnKey = Boolean(apiKey);
 
   return (
     <div className="settings-panel">
       <h2>Settings</h2>
       <p className="settings-hint">
-        Your API key is stored only in this browser's local storage and is sent directly
-        to Anthropic's API — it never touches any server of ours.{" "}
+        This demo works out of the box on a shared, rate-limited key. Add your own Anthropic API
+        key below for unlimited use and a choice of model — it's stored only in this browser's
+        local storage and sent directly to Anthropic's API, never to any server of ours.{" "}
         <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
           Get a key
         </a>
       </p>
 
       <label className="field">
-        <span>Anthropic API key</span>
+        <span>Anthropic API key (optional)</span>
         <div className="key-input-row">
           <input
             type={showKey ? "text" : "password"}
             value={apiKey}
             onChange={(e) => onApiKeyChange(e.target.value)}
-            placeholder="sk-ant-..."
+            placeholder="sk-ant-... (leave blank to use the shared demo)"
             autoComplete="off"
             spellCheck={false}
           />
@@ -46,8 +48,12 @@ export function SettingsPanel({ apiKey, model, onApiKeyChange, onModelChange }: 
       </label>
 
       <label className="field">
-        <span>Model</span>
-        <select value={model} onChange={(e) => onModelChange(e.target.value as ClaudeModel)}>
+        <span>Model{!hasOwnKey && " (requires your own key)"}</span>
+        <select
+          value={model}
+          disabled={!hasOwnKey}
+          onChange={(e) => onModelChange(e.target.value as ClaudeModel)}
+        >
           {MODEL_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
