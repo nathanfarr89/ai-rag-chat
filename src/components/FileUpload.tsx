@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { chunkText } from "../lib/chunking";
 import type { Chunk } from "../types";
 
+const MAX_CHUNKS = 500;
+
 interface Props {
   onDocumentReady: (fileName: string, chunks: Chunk[]) => void;
 }
@@ -28,9 +30,13 @@ export function FileUpload({ onDocumentReady }: Props) {
       }
 
       setStatus("Splitting into chunks…");
-      const texts = chunkText(text);
+      let texts = chunkText(text);
       if (texts.length === 0) {
         throw new Error("Document appears to be empty.");
+      }
+      const truncated = texts.length > MAX_CHUNKS;
+      if (truncated) {
+        texts = texts.slice(0, MAX_CHUNKS);
       }
 
       const { embedTexts } = await import("../lib/embeddings");
@@ -42,7 +48,10 @@ export function FileUpload({ onDocumentReady }: Props) {
         embedding: embeddings[i],
       }));
 
-      setStatus(`Ready — ${chunks.length} chunks indexed from ${file.name}`);
+      setStatus(
+        `Ready — ${chunks.length} chunks indexed from ${file.name}` +
+          (truncated ? ` (document was long, so only the first ${MAX_CHUNKS} chunks were used)` : ""),
+      );
       onDocumentReady(file.name, chunks);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to process file.");

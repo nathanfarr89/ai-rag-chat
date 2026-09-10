@@ -1,40 +1,50 @@
-import { pipeline, type FeatureExtractionPipeline } from "@huggingface/transformers";
 import type { Chunk, RetrievedChunk } from "../types";
-
-const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
-
-let extractorPromise: Promise<FeatureExtractionPipeline> | null = null;
 
 export type ProgressCallback = (status: string) => void;
 
-function getExtractor(onProgress?: ProgressCallback): Promise<FeatureExtractionPipeline> {
-  if (!extractorPromise) {
-    extractorPromise = pipeline("feature-extraction", EMBEDDING_MODEL, {
-      progress_callback: (progress: { status: string; file?: string; progress?: number }) => {
-        if (!onProgress) return;
-        if (progress.status === "progress" && progress.file) {
-          onProgress(`Downloading ${progress.file} (${Math.round(progress.progress ?? 0)}%)`);
-        } else if (progress.status === "ready") {
-          onProgress("Embedding model ready");
-        }
-      },
-    });
+type WorkerResponse =
+  | { id: number; type: "progress"; status: string }
+  | { id: number; type: "result"; embeddings: number[][] }
+  | { id: number; type: "error"; message: string };
+
+let worker: Worker | null = null;
+let nextId = 0;
+
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(new URL("./embeddingWorker.ts", import.meta.url), { type: "module" });
   }
-  return extractorPromise;
+  return worker;
 }
 
-export async function embedTexts(texts: string[], onProgress?: ProgressCallback): Promise<number[][]> {
-  const extractor = await getExtractor(onProgress);
-  const embeddings: number[][] = [];
-  for (const text of texts) {
-    const output = await extractor(text, { pooling: "mean", normalize: true });
-    embeddings.push(Array.from(output.data as Float32Array));
-  }
-  return embeddings;
+function runEmbedJob(texts: string[], onProgress?: ProgressCallback): Promise<number[][]> {
+  const w = getWorker();
+  const id = nextId++;
+
+  return new Promise((resolve, reject) => {
+    function handleMessage(event: MessageEvent<WorkerResponse>) {
+      if (event.data.id !== id) return;
+      if (event.data.type === "progress") {
+        onProgress?.(event.data.status);
+      } else if (event.data.type === "result") {
+        w.removeEventListener("message", handleMessage);
+        resolve(event.data.embeddings);
+      } else if (event.data.type === "error") {
+        w.removeEventListener("message", handleMessage);
+        reject(new Error(event.data.message));
+      }
+    }
+    w.addEventListener("message", handleMessage);
+    w.postMessage({ id, texts });
+  });
+}
+
+export function embedTexts(texts: string[], onProgress?: ProgressCallback): Promise<number[][]> {
+  return runEmbedJob(texts, onProgress);
 }
 
 export async function embedQuery(text: string): Promise<number[]> {
-  const [embedding] = await embedTexts([text]);
+  const [embedding] = await runEmbedJob([text]);
   return embedding;
 }
 
