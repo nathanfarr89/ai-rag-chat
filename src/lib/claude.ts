@@ -23,7 +23,7 @@ export async function streamAnswer(params: {
 }): Promise<void> {
   const { apiKey, model, history, question, context, onToken } = params;
 
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const client = new Anthropic({ apiKey: apiKey.trim(), dangerouslyAllowBrowser: true });
 
   const messages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
@@ -39,5 +39,18 @@ export async function streamAnswer(params: {
 
   stream.on("text", onToken);
 
-  await stream.finalMessage();
+  try {
+    await stream.finalMessage();
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) {
+      throw new Error("That API key was rejected. Double-check you copied the whole key with no extra characters.");
+    }
+    if (err instanceof Anthropic.RateLimitError) {
+      throw new Error("Rate limited by Anthropic's API — wait a moment and try again.");
+    }
+    if (err instanceof Anthropic.APIError) {
+      throw new Error(`Claude API error: ${err.message}`);
+    }
+    throw err;
+  }
 }

@@ -13,8 +13,9 @@ function App() {
   const [documentName, setDocumentName] = useState<string | null>(null);
 
   function handleApiKeyChange(key: string) {
-    setApiKey(key);
-    setStoredApiKey(key);
+    const trimmed = key.trim();
+    setApiKey(trimmed);
+    setStoredApiKey(trimmed);
   }
 
   function handleModelChange(m: ClaudeModel) {
